@@ -9,8 +9,10 @@ were confirmed through game loading. A before/after purchase experiment isolated
 the balance field and separated purchase eligibility from ownership. Unchanged
 decode/compress/encode cycles reproduced the source byte-for-byte.
 
-AC8 money edits were validated at the file level; explicit game-loading
-confirmation was not recorded for AC8.
+Validation is limited to ACZero executable file/product version **1.0.2.1**
+and installed Steam package Build ID **25201480**, checked on 2026-10-07.
+The package Build ID is not a separate executable version. Other versions,
+updates, regions, or distributions may differ; compatibility is not guaranteed.
 No emulator architecture was established for the bundled ACZero release.
 The Thrustmaster API DLL is a controller SDK, not evidence of an emulator.
 
@@ -68,6 +70,28 @@ These offsets belong to decoded data, not the on-disk ciphertext:
 | Campaign clear count | `0x6C54`, UInt32 LE; not needed for purchase unlocking |
 | Inner checksum | Last four bytes, UInt32 LE |
 
+### Three campaign slots
+
+The table above is relative to the first record. Slot `s` adds
+`(s - 1) * 0x70DC` to money, availability, ownership and clear-count offsets.
+The three record starts are `0x118`, `0x71F4`, and `0xE2D0`.
+The last record ends immediately before the shared inner checksum.
+
+UI occupancy comes from the common header, not the mission ID in each record:
+`UInt32 LE(decoded, 8 + 24 * (s - 1)) != 0xFFFFFFFF`.
+This summary level matches the occupied record's field at `record_start + 0x94`.
+The tool reports `unknown` and refuses editing if they disagree or if aircraft
+flags are invalid. An empty summary plus the known default record header
+`[19, 0xFFFFFFFF, 0, 0, 0]` is reported as `empty`.
+
+Do not classify a slot as empty using `record_start + 4` alone: that field is
+a mission ID and can be `0xFFFFFFFF` in game state transitions.
+Only existing slots may be edited. The tool does not initialize a campaign or
+infer the active slot. All non-target records and the common header must remain
+byte-for-byte unchanged.
+Slots 1 and 2 have game-loading confirmation; slot 3 still requires it.
+See [the slot 2 screenshot evidence](VALIDATION.md).
+
 ```python
 inner_checksum = sum(byte ^ 0xAA for byte in decoded[:-4]) & 0xFFFFFFFF
 ```
@@ -82,32 +106,13 @@ occurrences of the old money followed the balance change. Do not replace every
 matching numeric value. A natural unlock notification is not the same as shop
 eligibility; modifying medals or mission ranks is unnecessary for this operation.
 
-## AC8 GVAS
-
-Typical location:
-
-```text
-%LOCALAPPDATA%\BANDAI NAMCO Entertainment\ACE COMBAT 8\Saved\SaveGames\Campaign.sav
-```
-
-Parse the property tags instead of hardcoding offsets:
-
-- `PackedData`: `ArrayProperty<ByteProperty>`, nested property stream.
-- `CurrentMRP`: `UInt64Property`, eight-byte little-endian value.
-- `Checksum`: outer `UInt32Property`, four-byte little-endian value.
-
-```python
-checksum = zlib.crc32(packed_data_bytes, 0x41916EBD)
-```
-
-Include the nested `None` terminator, exclude the byte array's count and outer
-properties. Do not add another final XOR. Reproduce the original check before
-changing anything; preserve `TotalMRP` unless explicitly requested.
-
 ## Boundaries
 
-Only the first ACZero campaign record has been validated for editing.
-Alternate slots, complete mission histories, natural unlock requirements, and
+The first and second ACZero campaign records have game-loading validation.
+Third-slot editing is supported with offline checks, pending game validation.
+Complete mission histories, natural unlock requirements, and
 all display-name mappings are not fully documented.
 Setting a clear count does not recreate a complete playthrough. Do not modify
 game binaries, account binding, or cloud metadata as a fallback.
+
+See [the research-use and rights disclaimer](DISCLAIMER.md).
